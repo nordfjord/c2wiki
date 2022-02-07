@@ -178,12 +178,12 @@ const splitPascal = (s: string)=> s.replace(/[a-z][A-Z]/g, s => s[0] + ' ' + s[1
 
 
 export default function Page() {
-    const params = useParams()
+    const params = useParams<'slug'>()
     const data = useLoaderData()
     const names = useMemo(() => new Set(data.names as string[]), [data.names])
 
     return <div className="app">
-        <h1>{splitPascal(params.slug)}</h1>
+        <h1>{splitPascal(params.slug || '')}</h1>
         <Paragraph text={data.text} names={names}/>
     </div>
 }

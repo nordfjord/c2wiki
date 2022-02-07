@@ -183,7 +183,9 @@ export default function Page() {
     const names = useMemo(() => new Set(data.names as string[]), [data.names])
 
     return <div className="app">
-        <h1>{splitPascal(params.slug || '')}</h1>
+        <h1>
+            {splitPascal(params.slug || '')}
+        </h1>
         <Paragraph text={data.text} names={names}/>
     </div>
 }

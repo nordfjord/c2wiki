@@ -9,7 +9,7 @@ export async function loader({params}: any) {
     return {date: json.date, text: json.text}
 }
 
-export const links: LinksFunction = ()=> [{rel: 'stylesheet', href: styles}]
+export const links: LinksFunction = () => [{rel: 'stylesheet', href: styles}]
 
 
 const isUrl = (s: string) => {
@@ -22,97 +22,88 @@ const isUrl = (s: string) => {
 }
 
 type WikiElement =
-    | { type: 'root', children: (WikiElement | string)[], parent?: WikiElement }
-    | { type: 'hrule', children: (WikiElement | string)[], parent?: WikiElement }
-    | { type: 'paragraph', children: (WikiElement | string)[], parent?: WikiElement }
-    | { type: 'bold', children: (WikiElement | string)[], parent?: WikiElement }
-    | { type: 'italic', children: (WikiElement | string)[], parent?: WikiElement }
-    | { type: 'link', href: string, children: (WikiElement | string)[], parent?: WikiElement }
-    | { type: 'list', children: (WikiElement | string)[], parent?: WikiElement, depth: number }
+    | { type: 'root', children: (WikiElement | string)[] }
+    | { type: 'hrule', children: (WikiElement | string)[] }
+    | { type: 'paragraph', children: (WikiElement | string)[] }
+    | { type: 'bold', children: (WikiElement | string)[] }
+    | { type: 'italic', children: (WikiElement | string)[] }
+    | { type: 'link', href: string, children: (WikiElement | string)[] }
+    | { type: 'list', children: (WikiElement | string)[], depth: number }
 
-// A fairly dumb parser that takes a WardWiki string and turns it into a list of
-// "wiki elements"
-function parseText(words: string, names: Set<string>, idx: number): WikiElement {
-    const root: WikiElement = {type: 'root', children: []}
-    let context: WikiElement = root
-    while (idx < words.length) {
-        if (context.type === 'root') {
-            const pg: WikiElement = {type: 'paragraph', children: [], parent: context}
+function parseLine(line: string, stack: WikiElement[], root: WikiElement) {
+    let idx = 0
+    line = line.trim()
+    let context = stack[stack.length - 1]
+    if (line.length === 0) (context ?? root).children.push({type: 'paragraph', children: []})
+    if (line[0] !== '*') stack.length = 0
+    if (line[0] === '*') {
+        if (context?.type === 'paragraph') stack.pop()
+        context = stack[stack.length- 1]
+        let depth = 0;
+        while (line[idx + depth] === '*') {
+            depth++
+        }
+        idx += depth
+        if (stack.length !== depth) {
+            if (stack.length < depth) {
+                while (stack.length < depth) {
+                    const last: WikiElement = context?.children[context?.children.length - 1] as any
+                    const l: WikiElement = {type: 'list', depth, children: []};
+                    (last ?? root).children.push(l)
+                    stack.push(l)
+                }
+            } else {
+                const l: WikiElement = {type: 'list', depth, children: []};
+                (context ?? root).children.push(l)
+                stack.push(l)
+            }
+        }
+    }
+    while (idx < line.length) {
+        let context: WikiElement = stack[stack.length - 1] ?? root
+        if (context.type === 'root' || context.type === 'list') {
+            const pg: WikiElement = {type: 'paragraph', children: []}
             context.children.push(pg)
-            context = pg
+            stack.push(pg)
+            while (line[idx] === ' ' || line[idx] === '\t') {
+                idx++
+            }
             continue;
         }
 
-        if (words[idx] === "'" && words.substring(idx, idx + 3) === "'''") {
+        if (line[idx] === "'" && line.substring(idx, idx + 3) === "'''") {
             if (context.type === 'bold') {
-                context = context.parent!
+                stack.pop()
                 idx += 3
                 continue;
             }
-            const newCtx: WikiElement = {type: 'bold', children: [], parent: context}
+            const newCtx: WikiElement = {type: 'bold', children: []}
             context.children.push(newCtx)
-            context = newCtx
+            stack.push(newCtx)
             idx += 3
             continue;
         }
-        if (words[idx] === "'" && words.substring(idx, idx + 2) === "''") {
+        if (line[idx] === "'" && line.substring(idx, idx + 2) === "''") {
             if (context.type === 'italic') {
-                context = context.parent!
+                stack.pop()
                 idx += 2
                 continue;
             }
-            const newCtx: WikiElement = {type: 'italic', children: [], parent: context}
+            const newCtx: WikiElement = {type: 'italic', children: []}
             context.children.push(newCtx)
-            context = newCtx
+            stack.push(newCtx)
             idx += 2
             continue;
         }
-        if (words[idx] === '-' && words.substring(idx, idx + 4) === '----') {
+        if (line[idx] === '-' && line.substring(idx, idx + 4) === '----') {
             context.children.push({type: 'hrule', children: []})
             idx += 4
             continue;
         }
-        if (words[idx] === '\r') {
-            idx++
-            continue;
-        }
-        if (words[idx] === '\n') {
-            idx++
-            context = context.parent!
-            continue;
-        }
 
-        if (words[idx] === '*') {
-            let depth = 0
-            while (words[idx] === '*') {
-                depth++
-                idx++
-            }
-            let parent: WikiElement | null = null
-            for (let i = context.children.length - 1; i >= 0; --i) {
-                const child = context.children[i]
-                if (typeof child !== 'string' && child.type === 'list') {
-                    parent = child
-                    break
-                }
-            }
-            if (parent?.type === 'list' && parent?.depth === depth) {
-                context = parent
-                continue;
-            }
-            // going back down
-            if (parent?.type === 'list' && depth < parent?.depth) {
-                continue;
-            }
-            const newCtx: WikiElement = {type: 'list', children: [], parent: context, depth}
-            context.children.push(newCtx)
-            context = newCtx
-            continue;
-        }
-
-        let word = words[idx++]
-        while (words[idx] != ' ' && words[idx] !== "'" && words[idx] !== '*' &&  words[idx] !== '\r' && words[idx] !== '\n' && idx < words.length) {
-            word += words[idx++]
+        let word = line[idx++]
+        while (line[idx] !== "'" && line[idx] !== '*' && line[idx] !== '\r' && line[idx] !== '\n' && idx < line.length) {
+            word += line[idx++]
         }
 
         let match;
@@ -121,7 +112,6 @@ function parseText(words: string, names: Set<string>, idx: number): WikiElement 
             const newCtx: WikiElement = {
                 type: 'link',
                 children: [match[0]],
-                parent: context,
                 href: '/' + match[0]
             }
             if (match.index !== 0) {
@@ -134,7 +124,7 @@ function parseText(words: string, names: Set<string>, idx: number): WikiElement 
             continue;
         }
         if (isUrl(word)) {
-            const newCtx: WikiElement = {type: 'link', children: [word], parent: context, href: word}
+            const newCtx: WikiElement = {type: 'link', children: [word], href: word}
             context.children.push(newCtx)
             continue;
         }
@@ -145,25 +135,37 @@ function parseText(words: string, names: Set<string>, idx: number): WikiElement 
             context.children.push(word)
         }
     }
+}
+
+// A fairly dumb parser that takes a WardWiki string and turns it into a list of
+// "wiki elements"
+function parseText(text: string): WikiElement {
+    const root: WikiElement = {type: 'root', children: []}
+    const wordssplit = text.split('\r\n')
+    const stack: WikiElement[] = []
+    for (const words of wordssplit) {
+        parseLine(words, stack, root)
+    }
     return root
 }
 
-function renderWiki(elem: WikiElement | string): JSX.Element {
+function renderWiki(elem: WikiElement | string, key?: any): JSX.Element {
     if (typeof elem == 'string') return elem as any
     switch (elem.type) {
         case 'root':
             return elem.children.map(renderWiki) as any
         case "bold":
-            return <strong>{elem.children.map(renderWiki)}</strong>
+            return <strong key={key}>{elem.children.map(renderWiki)}</strong>
         case "italic":
-            return <em>{elem.children.map(renderWiki)}</em>
+            return <em key={key}>{elem.children.map(renderWiki)}</em>
         case 'link':
             if (elem.href.startsWith('/')) return <Link to={elem.href}>{elem.children.map(renderWiki)}</Link>
-            return <a href={elem.href}>{elem.children.map(renderWiki)}</a>
+            return <a key={key} href={elem.href}>{elem.children.map(renderWiki)}</a>
         case "paragraph":
-            return <div>{elem.children.map(renderWiki)}</div>
+            return <div key={key}>{elem.children.map(renderWiki)}</div>
         case 'list':
-            return <ul>{elem.children.map((x, i) => <li key={i}>{renderWiki(x)}</li>)}</ul>
+            return <ul key={key}>{elem.children
+                .map((x, i) => <li key={i}>{renderWiki(x)}</li>)}</ul>
         case 'hrule':
             return <hr/>
     }
@@ -174,7 +176,7 @@ function Paragraph({text, names}: { text: string, names: Set<string> }) {
     return renderWiki(parsed) as any as JSX.Element
 }
 
-const splitPascal = (s: string)=> s.replace(/[a-z][A-Z]/g, s => s[0] + ' ' + s[1])
+const splitPascal = (s: string) => s.replace(/[a-z][A-Z]/g, s => s[0] + ' ' + s[1])
 
 
 export default function Page() {

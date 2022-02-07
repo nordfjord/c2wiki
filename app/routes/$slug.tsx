@@ -1,5 +1,5 @@
 import {Link, useLoaderData} from "@remix-run/react";
-import {LinksFunction, useParams} from "remix";
+import {LinksFunction, MetaFunction, useParams} from "remix";
 import {useMemo} from "react";
 import styles from '../../styles/retro.css'
 
@@ -102,7 +102,7 @@ function parseLine(line: string, stack: WikiElement[], root: WikiElement) {
         }
 
         let word = line[idx++]
-        while (line[idx] !== "'" && line[idx] !== '*' && line[idx] !== '\r' && line[idx] !== '\n' && idx < line.length) {
+        while (line[idx] !== ' ' && line[idx] !== "'" && line[idx] !== '*' && line[idx] !== '\r' && line[idx] !== '\n' && idx < line.length) {
             word += line[idx++]
         }
 
@@ -172,12 +172,15 @@ function renderWiki(elem: WikiElement | string, key?: any): JSX.Element {
 }
 
 function Paragraph({text, names}: { text: string, names: Set<string> }) {
-    const parsed = parseText(text.replace("''''''", "'"), names, 0)
+    const parsed = parseText(text.replace("''''''", "'"))
     return renderWiki(parsed) as any as JSX.Element
 }
 
 const splitPascal = (s: string) => s.replace(/[a-z][A-Z]/g, s => s[0] + ' ' + s[1])
 
+export const meta: MetaFunction = (props) => {
+    return { title: 'C2 Wiki - ' + splitPascal(props.params.slug || '') };
+};
 
 export default function Page() {
     const params = useParams<'slug'>()

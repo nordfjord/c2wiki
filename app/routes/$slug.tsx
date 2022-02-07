@@ -61,6 +61,7 @@ function parseLine(line: string, stack: WikiElement[], root: WikiElement) {
     }
     while (idx < line.length) {
         let context: WikiElement = stack[stack.length - 1] ?? root
+        if (line[idx] === '\n') stack.pop()
         if (context.type === 'root' || context.type === 'list') {
             const pg: WikiElement = {type: 'paragraph', children: []}
             context.children.push(pg)
